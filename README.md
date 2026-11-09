@@ -12,8 +12,9 @@ go get github.com/Rossete-Inc/gestor-gastos-go-commons@latest
 | `errs` | Erros de domínio tipados (`NotFound`, `Conflict`, `Validation`...) e conversão para `application/problem+json` (RFC 9457) com `code` e `errors[]`. A causa interna nunca vai para o cliente |
 | `logging` | Logger `slog` em JSON com `service` e `env`. Redige atributos sensíveis (`email`, `nome`, `senha`, `token`, `descricao`...) e mascara e-mails em qualquer texto |
 | `auth` | Valida JWT do Cognito ou do cognito-local por JWKS configurável, com cache e rotação de chave. Confere emissor, expiração, `token_use` e app client, e expõe `UserID`, `Groups` e `IsAdmin()` |
+| `invoke` | Chamada síncrona BFF → serviço com envelope `operation` + `payload` + `userId`. Dois transportes atrás da interface `Transport`: Lambda Invoke (`RUNTIME=aws`) e POST HTTP em `/invoke` (`RUNTIME=local`). O `Router` do serviço atende os dois com o mesmo handler, e erros de domínio voltam ao BFF com o mesmo `Kind`, `Code` e `Fields` |
 
-Os próximos pacotes são `invoke` (4.2), `events` (4.3) e os helpers de paginação e centavos (4.4).
+Os próximos pacotes são `events` (4.3) e os helpers de paginação e centavos (4.4).
 
 ## Exemplo
 
@@ -28,6 +29,30 @@ if err != nil {
     return
 }
 log.Info("gasto criado", "userId", claims.UserID) // nunca o e-mail
+```
+
+### invoke
+
+No serviço, o mesmo `Router` atende a Lambda e o `cmd/local`:
+
+```go
+r := invoke.NewRouter(log)
+r.Handle("ObterGasto", invoke.Typed(func(ctx context.Context, userID string, in ObterGastoIn) (Gasto, error) {
+    return svc.Obter(ctx, userID, in.ID) // errs.NotFound chega ao BFF como 404
+}))
+
+lambda.Start(r.LambdaHandler())                         // cmd/lambda
+http.ListenAndServe(":8083", r.HTTPHandler())           // cmd/local, POST /invoke
+```
+
+No BFF, o transporte é escolhido pelo `RUNTIME`. O destino é o ARN com alias na AWS e a URL do `cmd/local` localmente:
+
+```go
+t, err := invoke.NewTransport(base.Runtime, os.Getenv("EXPENSES_TARGET"), lambda.NewFromConfig(awsCfg), nil)
+gastos := invoke.NewClient(t)
+
+var g Gasto
+err = gastos.Call(ctx, "ObterGasto", claims.UserID, ObterGastoIn{ID: id}, &g)
 ```
 
 ## Testes
