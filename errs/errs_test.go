@@ -123,3 +123,16 @@ func TestWrite(t *testing.T) {
 		t.Errorf("corpo = %+v", p)
 	}
 }
+
+func TestKindOfNil(t *testing.T) {
+	// Antes da v0.1.1, KindOf(nil) entrava em panic.
+	if k := KindOf(nil); k != KindNone {
+		t.Errorf("KindOf(nil) = %v, quer KindNone", k)
+	}
+	if KindOf(nil) == KindInternal {
+		t.Error("nil não pode ser classificado como erro interno")
+	}
+	if KindNone.Status() != 0 {
+		t.Errorf("KindNone.Status() = %d, quer 0", KindNone.Status())
+	}
+}
