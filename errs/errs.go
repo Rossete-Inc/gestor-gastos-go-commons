@@ -25,6 +25,10 @@ const (
 	KindValidation
 )
 
+// KindNone é o Kind de um erro nil, devolvido por KindOf(nil). Não tem
+// status HTTP.
+const KindNone Kind = -1
+
 var kindStatus = map[Kind]int{
 	KindInternal:     http.StatusInternalServerError,
 	KindBadRequest:   http.StatusBadRequest,
@@ -115,5 +119,11 @@ func As(err error) *Error {
 	return Internal(err)
 }
 
-// KindOf devolve o Kind de err (KindInternal para erros desconhecidos).
-func KindOf(err error) Kind { return As(err).Kind }
+// KindOf devolve o Kind de err: KindInternal para erros desconhecidos e
+// KindNone para nil.
+func KindOf(err error) Kind {
+	if err == nil {
+		return KindNone
+	}
+	return As(err).Kind
+}
