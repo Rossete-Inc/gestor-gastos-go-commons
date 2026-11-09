@@ -13,8 +13,9 @@ go get github.com/Rossete-Inc/gestor-gastos-go-commons@latest
 | `logging` | Logger `slog` em JSON com `service` e `env`. Redige atributos sensíveis (`email`, `nome`, `senha`, `token`, `descricao`...) e mascara e-mails em qualquer texto |
 | `auth` | Valida JWT do Cognito ou do cognito-local por JWKS configurável, com cache e rotação de chave. Confere emissor, expiração, `token_use` e app client, e expõe `UserID`, `Groups` e `IsAdmin()` |
 | `invoke` | Chamada síncrona BFF → serviço com envelope `operation` + `payload` + `userId`. Dois transportes atrás da interface `Transport`: Lambda Invoke (`RUNTIME=aws`) e POST HTTP em `/invoke` (`RUNTIME=local`). O `Router` do serviço atende os dois com o mesmo handler, e erros de domínio voltam ao BFF com o mesmo `Kind`, `Code` e `Fields` |
+| `events` | Eventos assíncronos (`UserConfirmed`, `UserDeleted`). Publisher EventBridge (`RUNTIME=aws`) e publisher local, que faz POST do mesmo envelope a cada URL de `LOCAL_EVENT_TARGETS` em paralelo; a falha de um consumidor não impede os outros. O `Router` do consumidor atende a Lambda e o `cmd/local` (`POST /events`) com o mesmo handler |
 
-Os próximos pacotes são `events` (4.3) e os helpers de paginação e centavos (4.4).
+O próximo pacote são os helpers de paginação e centavos (4.4).
 
 ## Exemplo
 
@@ -53,6 +54,34 @@ gastos := invoke.NewClient(t)
 
 var g Gasto
 err = gastos.Call(ctx, "ObterGasto", claims.UserID, ObterGastoIn{ID: id}, &g)
+```
+
+### events
+
+Quem publica escolhe o publisher pelo `RUNTIME`:
+
+```go
+pub, err := events.NewPublisher(events.Options{
+    Runtime:      base.Runtime,
+    Source:       "gestor-gastos.users-service",
+    BusName:      os.Getenv("EVENT_BUS_NAME"),          // aws
+    API:          eventbridge.NewFromConfig(awsCfg),    // aws
+    LocalTargets: os.Getenv("LOCAL_EVENT_TARGETS"),     // local: "http://localhost:8082/events,http://localhost:8083/events"
+    Log:          log,
+})
+err = pub.Publish(ctx, events.UserDeleted, events.UserDeletedDetail{UserID: id})
+```
+
+Quem consome registra o handler, que precisa ser idempotente porque a AWS entrega "pelo menos uma vez":
+
+```go
+r := events.NewRouter(log)
+r.Handle(events.UserDeleted, events.Typed(func(ctx context.Context, e events.Event, d events.UserDeletedDetail) error {
+    return store.ApagarTudoDoUsuario(ctx, d.UserID)
+}))
+
+lambda.Start(r.LambdaHandler())                 // cmd/lambda; erro → retentativa e DLQ
+mux.Handle(events.Path, r.HTTPHandler())        // cmd/local, POST /events
 ```
 
 ## Testes
