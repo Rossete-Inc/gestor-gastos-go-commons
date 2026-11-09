@@ -1,0 +1,68 @@
+# Esteira só de testes (tarefa 4.5). O go-commons não tem deploy: a
+# "publicação" é a tag semver, que o proxy de módulos do Go serve sozinho.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  MIN_COVERAGE: "80"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: go mod tidy sem diferenças
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+      - name: gofmt
+        run: |
+          fora=$(gofmt -l .)
+          if [ -n "$fora" ]; then
+            echo "Arquivos fora do gofmt:"; echo "$fora"; exit 1
+          fi
+      - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Testes com race detector e cobertura
+        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./... | tee test.out
+      - name: Cobertura mínima por pacote
+        run: |
+          echo "| Pacote | Cobertura |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          falhou=0
+          while read -r pacote pct; do
+            echo "| \`$pacote\` | $pct% |" >> "$GITHUB_STEP_SUMMARY"
+            if awk -v p="$pct" -v m="$MIN_COVERAGE" 'BEGIN { exit !(p < m) }'; then
+              echo "::error::$pacote tem $pct% de cobertura, abaixo de $MIN_COVERAGE%"
+              falhou=1
+            fi
+          done < <(grep -E '^ok' test.out | sed -E 's/^ok[[:space:]]+([^[:space:]]+).*coverage: ([0-9.]+)%.*/\1 \2/')
+          echo "Total: $(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')" >> "$GITHUB_STEP_SUMMARY"
+          exit $falhou

@@ -51,7 +51,7 @@ func (t *HTTPTransport) Send(ctx context.Context, req Request) (Response, error)
 	if err != nil {
 		return Response{}, fmt.Errorf("POST %s: %w", t.url, err)
 	}
-	defer hresp.Body.Close()
+	defer func() { _ = hresp.Body.Close() }()
 
 	raw, err := io.ReadAll(io.LimitReader(hresp.Body, MaxPayloadBytes+1))
 	if err != nil {
