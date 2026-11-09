@@ -38,7 +38,7 @@ jobs:
             echo "Arquivos fora do gofmt:"; echo "$fora"; exit 1
           fi
       - run: go vet ./...
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15
 
