@@ -14,8 +14,8 @@ go get github.com/Rossete-Inc/gestor-gastos-go-commons@latest
 | `auth` | Valida JWT do Cognito ou do cognito-local por JWKS configurável, com cache e rotação de chave. Confere emissor, expiração, `token_use` e app client, e expõe `UserID`, `Groups` e `IsAdmin()` |
 | `invoke` | Chamada síncrona BFF → serviço com envelope `operation` + `payload` + `userId`. Dois transportes atrás da interface `Transport`: Lambda Invoke (`RUNTIME=aws`) e POST HTTP em `/invoke` (`RUNTIME=local`). O `Router` do serviço atende os dois com o mesmo handler, e erros de domínio voltam ao BFF com o mesmo `Kind`, `Code` e `Fields` |
 | `events` | Eventos assíncronos (`UserConfirmed`, `UserDeleted`). Publisher EventBridge (`RUNTIME=aws`) e publisher local, que faz POST do mesmo envelope a cada URL de `LOCAL_EVENT_TARGETS` em paralelo; a falha de um consumidor não impede os outros. O `Router` do consumidor atende a Lambda e o `cmd/local` (`POST /events`) com o mesmo handler |
-
-O próximo pacote são os helpers de paginação e centavos (4.4).
+| `page` | Paginação por cursor opaco: a chave de continuação do DynamoDB em base64url, assinada com HMAC-SHA256 sobre um escopo (usuário + filtros). Cursor adulterado, de outro escopo ou de outro segredo vira 400 `cursor_invalido`. Inclui `Limit` (padrão 20, máximo 100) e `Page[T]`, que serializa `items` vazio como `[]` |
+| `money` | Somas de centavos em `int64` (`Sum`, `SumBy`, `SumByKey`) que detectam estouro em vez de dar a volta. Valor monetário nunca passa por float |
 
 ## Exemplo
 
@@ -82,6 +82,20 @@ r.Handle(events.UserDeleted, events.Typed(func(ctx context.Context, e events.Eve
 
 lambda.Start(r.LambdaHandler())                 // cmd/lambda; erro → retentativa e DLQ
 mux.Handle(events.Path, r.HTTPHandler())        // cmd/local, POST /events
+```
+
+### page e money
+
+```go
+cursores, err := page.NewCodec([]byte(os.Getenv("CURSOR_SECRET"))) // ≥ 32 bytes; SSM SecureString na AWS
+
+escopo := "USER#" + userID + "|" + mes + "|" + grupo + "|" + categoria
+inicio, err := cursores.Decode(escopo, in.Cursor) // nil = primeira página; adulterado = 400
+// ... Query com Limit: page.Limit(in.Limit) e ExclusiveStartKey montada a partir de inicio
+proximo, err := cursores.Encode(escopo, page.Key{"PK": pk, "SK": sk}) // do LastEvaluatedKey
+return page.New(itens, proximo), nil
+
+porGrupo, err := money.SumByKey(gastos, func(g Gasto) string { return g.Grupo }, func(g Gasto) int64 { return g.ValorCentavos })
 ```
 
 ## Testes
