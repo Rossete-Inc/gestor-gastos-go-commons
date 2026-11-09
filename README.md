@@ -102,7 +102,10 @@ porGrupo, err := money.SumByKey(gastos, func(g Gasto) string { return g.Grupo },
 
 ```sh
 go test ./... -cover
+golangci-lint run ./...   # v2
 ```
+
+A esteira (`.github/workflows/ci.yml`) roda em todo PR, no merge na `main` e nas tags `v*.*.*`. Ela confere `go mod tidy`, `gofmt`, `go vet` e `golangci-lint`, roda os testes com `-race` e reprova o pacote que ficar abaixo de 80% de cobertura. Não há deploy: a versão é publicada pela tag semver.
 
 O teste de integração do `auth` roda contra o cognito-local do `gestor-gastos-infra-base`:
 
