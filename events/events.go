@@ -32,6 +32,11 @@ const (
 	// UserDeleted é publicado pelo users-service e consumido pelos serviços
 	// que guardam dados do usuário.
 	UserDeleted = "UserDeleted"
+	// MetasAtingidas é publicado pelo expenses-service quando um lançamento
+	// faz metas cruzarem 80% ou 100% pela primeira vez no mês (ADR 0011), e
+	// consumido pelo users-service, que envia o Web Push. Um evento por
+	// escrita, com todos os cruzamentos dela.
+	MetasAtingidas = "MetasAtingidas"
 )
 
 // UserConfirmedDetail é o detail de UserConfirmed. Email e Nome são dados
@@ -45,6 +50,25 @@ type UserConfirmedDetail struct {
 // UserDeletedDetail é o detail de UserDeleted.
 type UserDeletedDetail struct {
 	UserID string `json:"userId"`
+}
+
+// MetasAtingidasDetail é o detail de MetasAtingidas. DonoID é a conta (a
+// partição do dono, ADR 0010); AutorID é quem fez o lançamento.
+type MetasAtingidasDetail struct {
+	DonoID  string         `json:"donoId"`
+	AutorID string         `json:"autorId"`
+	Alertas []AlertaDeMeta `json:"alertas"`
+}
+
+// AlertaDeMeta é um limiar cruzado por uma meta num mês. Limiar é 80 ou 100;
+// os valores são em centavos.
+type AlertaDeMeta struct {
+	CategoriaID   string `json:"categoriaId"`
+	NomeCategoria string `json:"nomeCategoria"`
+	Mes           string `json:"mes"` // AAAA-MM, o mês de referência
+	Limiar        int    `json:"limiar"`
+	TotalCentavos int64  `json:"totalCentavos"`
+	MetaCentavos  int64  `json:"metaCentavos"`
 }
 
 // MaxDetailBytes é o limite de uma entrada do PutEvents. O publisher local
