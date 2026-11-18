@@ -396,3 +396,32 @@ func TestNewPublisher(t *testing.T) {
 		})
 	}
 }
+
+func TestMetasAtingidasDetailJSON(t *testing.T) {
+	d := MetasAtingidasDetail{
+		DonoID:  "ana",
+		AutorID: "bruno",
+		Alertas: []AlertaDeMeta{{
+			CategoriaID: "lazer", NomeCategoria: "Lazer", Mes: "2026-11",
+			Limiar: 80, TotalCentavos: 82000, MetaCentavos: 100000,
+		}},
+	}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"donoId":"ana","autorId":"bruno","alertas":[{"categoriaId":"lazer","nomeCategoria":"Lazer","mes":"2026-11","limiar":80,"totalCentavos":82000,"metaCentavos":100000}]}`
+	if string(b) != want {
+		t.Fatalf("JSON\n got %s\nwant %s", b, want)
+	}
+	var volta MetasAtingidasDetail
+	if err := json.Unmarshal(b, &volta); err != nil {
+		t.Fatal(err)
+	}
+	if volta.Alertas[0] != d.Alertas[0] || volta.DonoID != "ana" || volta.AutorID != "bruno" {
+		t.Fatalf("ida e volta: %+v", volta)
+	}
+	if MetasAtingidas != "MetasAtingidas" {
+		t.Fatalf("detail-type %q", MetasAtingidas)
+	}
+}
